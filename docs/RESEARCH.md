@@ -355,3 +355,21 @@ already warns "future macOS updates may break it".
    provider didn't come back" on 27.2, against PaperSaver's ~1 in 3?
 4. Can a non-sandboxed, ad-hoc-signed app extension actually load on the `com.apple.wallpaper`
    extension point without the private entitlement?
+
+## 11. Where each finding landed
+
+The findings above are tracked as issues on this fork, so the notes and the plan stay together:
+
+| Issue | From |
+|---|---|
+| [#1 Per-slot content: photo, dynamic HEIC, or colour](https://github.com/next-miracle-creator/aerial-switcher/issues/1) | §3(a), §9.1–2 |
+| [#2 Sunrise/sunset scheduling](https://github.com/next-miracle-creator/aerial-switcher/issues/2) | §9.5 |
+| [#3 "Show menu bar icon" toggle](https://github.com/next-miracle-creator/aerial-switcher/issues/3) | §6 |
+| [#4 Read `SMAppService.status` after `register()`](https://github.com/next-miracle-creator/aerial-switcher/issues/4) | §6, §9.7 |
+| [#5 Exact wall-clock ticks from `nextChange(after:)`](https://github.com/next-miracle-creator/aerial-switcher/issues/5) | §6, §9.7 |
+| [#6 Reload reliability, and reading PaperSaver first](https://github.com/next-miracle-creator/aerial-switcher/issues/6) | §4, §5, §9.3, §10.3 |
+| [#7 Store-schema drift preflight + tested-on range](https://github.com/next-miracle-creator/aerial-switcher/issues/7) | §1, §9.2 |
+
+The open experiments in §10 are not issues — they are the cheapest way to turn a **[doc]**
+claim into a **[verified here]** one, and #1 and #6 depend on their answers. Nothing here is
+scheduled: the fork ships no roadmap, and a decision to build any of it is still ahead.
