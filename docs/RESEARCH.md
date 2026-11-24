@@ -61,6 +61,20 @@ thumbnails/4207734D-….png  LastETag: "7CF7…"     SourceURL: https://sylvan.a
 So provenance is `SourceURL` + `LastETag` per file, written by the aerials extension itself, and a
 missing `LastETag` is what invites a re-download.
 
+**Correction to an earlier note in this file.** I first wrote that an overridden manifest gets
+"clobbered on `scheduledUpdateDate`". That is not what the projects using the override keys report.
+**[doc]** [BiAksoy's live-mode notes](https://github.com/BiAksoy/aerial-dynamic-wallpaper/blob/main/docs/live-mode.md),
+last checked macOS 27.2, state the actual consequence: *while the override is on, macOS does not
+refresh its list of aerials*, so footage added by a system update only shows up after the override
+is disabled — and the tool deliberately refuses to touch a hand-set override. Whether the refresh
+also overwrites an injected `entries.json` is still unverified here (it is §10.2). What is
+documented is a workaround on the injection route rather than the override route:
+**[doc]** [AerialSwap](https://github.com/mxpalm/AerialSwap) runs a LaunchAgent that watches
+`entries.json` and re-applies its group, standing down if it has been wiped three times in ten
+minutes — i.e. it treats being overwritten as a likely event, and self-heals instead of assuming
+it cannot happen. Its notes add that a duplicate asset is ignored unless its `version` is at least
+the builtin manifest's, which is a different failure from being deleted.
+
 **[verified here]** `defaults read com.apple.wallpaper.aerial`:
 
 ```
@@ -191,18 +205,54 @@ trade is the entire reason [PaperSaver](https://github.com/AerialScreensaver/Pap
 |---|---|---|
 | [Aerial 4.1](https://github.com/AerialScreensaver/Aerial) | wallpaper + screensaver *app extension*, macOS 26/27, v4.1.12 (2026-11-19) | already does time-of-day, scheduled auto-advance, local `.mov/.mp4`, live feeds, cache limits, thermal/battery pause |
 | [PaperSaver](https://github.com/AerialScreensaver/PaperSaver) | MIT SwiftPM library, macOS 14+, writes the store for you | `setWallpaperExtension(slot:.desktop)`, `WriteOptions(restartAgent, verify, rollbackOnFailure)`, `Index.plist.backup`, per-display/Space targets, `Type = linked\|individual\|idle`, and a measured ~1-in-3 agent restarts on 27.2 that leave the extension not running |
-| [Aerialist](https://github.com/eddytwist/aerial-shelf) | menu-bar shelf + `aerialctl` | closest to this fork's feature set; the manifest-override recipe in live code |
-| [AerialSwap](https://github.com/mxpalm/AerialSwap) | custom video wallpapers via manifest injection | the temporal-sublayer failure mode, `testedMajorVersion` gating, a manifest watcher |
+| [Aerialist](https://github.com/eddytwist/aerialist) | menu-bar rotation of only the aerials you picked, v0.5.0 (2026-11-19), MIT | "without the 80 GB": downloads each clip just before its turn, keeps only the last 1/3/5/10 shown, never deletes what you pinned or your own files; writes one video id into the store and restarts the agent. The disk policy §9.6 describes is already shipped by someone |
+| [AerialSwap](https://github.com/mxpalm/AerialSwap) | custom video as a *native* aerial, v2.0, macOS 27 tested, MIT | the injection route done carefully: adds a category to `entries.json`, APFS-clones the file into `aerials/videos/<id>.mov`, sets the `SourceURL`/`LastETag`/quarantine xattrs, bumps `version` above the builtin manifest so it is not ignored, and runs a LaunchAgent that re-applies the group if the system overwrites it. Also optical-flow frame-rate conversion so the post-unlock slow-down doesn't stutter, plus Workshop/Pixabay/yt-dlp importers |
+| [macos-custom-video-wallpaper-fix](https://github.com/AlexisBCD/macos-custom-video-wallpaper-fix) | the root cause of "custom aerial goes black after unlock", MIT, macOS 26.4.1 | **[doc]** the only place I found that names it: `WallpaperExtensionKit.VideoSampleReadingErrors Code-4 noTemporalInfo`, derived by reading `__swift5_fieldmd` out of the dyld shared cache. Apple's clips carry HEVC temporal sub-layers (`tscl`/`tsas` sample groups) that the unlock ramp-down reads; **no** ffmpeg (`libx265` or `hevc_videotoolbox`) and not `avconvert` produce them — only VideoToolbox with `kVTCompressionPropertyKey_BaseLayerFrameRate`, and the repo ships that encoder. Two further traps: an ~18 s loop hits `Buffer was nil` and freezes permanently unless stretched to ~5 min, and 8-bit makes the Settings thumbnails noisy |
+| [wallpaper-aerials-fix](https://github.com/yuvrajangadsingh/wallpaper-aerials-fix) | one job: unsticks the aerial provider on unlock, MIT, Sonoma–Tahoe | subscribes to `com.apple.screenIsUnlocked`/`IsLocked` distributed notifications and SIGTERMs `WallpaperAerialsExtension` by process name, with `--wait-for-displays` for the external-monitor case. This is the recovery path our #6 is missing, in 1 binary |
+| [Sunpaper](https://github.com/mduncs/sunpaper-app) | menu-bar app that schedules Apple aerials *by the sun*, v1.2.0 (2026-10-06), MIT | overlaps almost our whole roadmap: dawn/sunrise/solar-noon/sunset/dusk + signed offset, a draggable 24-hour track that snaps to sun events, per-display schedules, aerials *and* the user's own stills, a catalog picker with a "already on this Mac" filter, prefetch 5 min early, rollback from a snapshot with Retry, unreadable settings set aside rather than overwritten, and optional "smoothing" that hides the grey flash by covering each display with its own capture and cross-fading (needs screen-recording permission). Author: personal, unsupported, README written by a model — treat as a design reference |
+| [HourGlow](https://github.com/bobbyhuang-dev/hourglow) | general trigger→wallpaper scheduler, v1.6.1, Apache-2.0, macOS 26+, zero deps, <10 MB | our #2 and #5 already built: fixed clock, sunrise/sunset ± offset, or solar-phase slices; NOAA sun times computed locally from system location, a city, typed coordinates, or *nothing* (time-zone inference, no permission); **no polling** — one `Timer(fire:)` at the next trigger plus separate wake / clock-change / timezone-change / day-rollover notifications; refuses to undo your manual pick; staged edits behind an Apply button; `SMAppService` login item; bilingual UI |
 | [Phosphene](https://github.com/kageroumado/phosphene) | any video as a real wallpaper, via app extension | the long-term answer to "user-customizable" |
+| [WallpaperMachine](https://github.com/MMFoundation/WallpaperMachine) | Wallpaper Engine on the Mac, v1.14.0 (2026-11-23), GPL-3.0, 1.6k stars, notarized | the maximalist alternative, and a different route: a resident Rust/Metal renderer in a desktop-level window, which *also* writes a still "poster" into the system store with a ledger so it can restore what it replaced on quit; scheduling by weekday/clock and sunrise-sunset ±180 min, Focus, per-Space, battery/thermal ceilings, Shortcuts |
 | [WallGet](https://github.com/mikeswanson/WallGet) | downloader for the whole catalogue | download / resume / size hygiene |
 | [rebeccacremona/wallpaper](https://github.com/rebeccacremona/wallpaper) | "Tahoe Aerial Switcher": LaunchAgent + captured plists | the launchd alternative, plus a documented gotcha: some variants store `Provider: default` with an empty config rather than an aerial id |
 | [macos-wallpaper](https://github.com/sindresorhus/macos-wallpaper), [aerial-dynamic-wallpaper](https://github.com/BiAksoy/aerial-dynamic-wallpaper) | CLI `wallpaper`, `aerial-build-dynamic` | images and dynamic HEIC without touching the store |
 | [JohnCoates/Aerial](https://github.com/JohnCoates/Aerial) | legacy `.saver`, last release 3.6.3 (2025-08-12) | the history, and [CustomVideos.md](https://github.com/JohnCoates/Aerial/blob/v3.6.3/Documentation/CustomVideos.md) which predates all of this |
-| [Alpenglow](https://github.com/remco-space/Alpenglow), [Moodpaper](https://github.com/FuturisticXx/Moodpaper), [WallpaperScheduler](https://github.com/Kapfilm/WallpaperScheduler), [Sundial](https://github.com/Nyxnix/sundial) | photo-library / slot-based rotators | the UX vocabulary for per-slot content (§7) |
+| [Alpenglow](https://github.com/remco-space/Alpenglow), [Moodpaper](https://github.com/FuturisticXx/Moodpaper), [WallpaperScheduler](https://github.com/Kapfilm/WallpaperScheduler), [Sundial](https://github.com/Nyxnix/sundial), [WallShifter](https://github.com/tarrgor/WallShifter) | photo-library / slot-based rotators | the UX vocabulary for per-slot content (§7). WallShifter's is the one habit worth stealing: snapshot each display's `desktopImageURL` at launch by `CGDirectDisplayID` and restore in `applicationWillTerminate`. Sundial and WallpaperScheduler show the form we are trying to grow out of — a coarse repeating poll |
+| [tahoe-motion-wallpaper](https://github.com/victor-gurbani/tahoe-motion-wallpaper), [EMarionih/wallpaper-switcher](https://github.com/EMarionih/wallpaper-switcher), [MacOS_Dynamic_Aerial](https://github.com/postrou/MacOS_Dynamic_Aerial) | small do-it-yourself versions of exactly this feature | all three write `Index.plist` and restart `WallpaperAgent`, so the mechanism is not ours alone to defend. The first is the most complete (discovers asset ids from `entries.json`, fills missing clips, dry-run and status, and schedules with a LaunchAgent's `StartCalendarInterval` rather than a timer); the Python one atomic-writes with a `.bak` and is idempotent; postrou's overwrites the whole store from four snapshots, which is how you also clobber the screensaver |
+| [DynamicDesktop](https://github.com/commingling/DynamicDesktop) | keeps any display *moving* with native aerials, via a click-through window at `kCGDesktopWindowLevel+1` | deliberately not a store writer — reads the store only to find the current wallpaper. Useful contrast: this is what "always animating" costs (a resident player, a window per display) versus our one write per boundary |
+| [wallpy](https://github.com/siphyshu/wallpy) | Go CLI + LaunchAgent, declarative `schedule.toml` | the nicest schema for sun-relative timing I found: `at = sunrise+1h30m / dusk / noon`, plus weekday rules and a documented fallback clock when there is no location or the sun never sets — and it ships test vectors for the evaluation |
 
 **[doc]** Aerial 4's open issues are the same class of problem this fork has: #210 auto-pause
 clashes with "Show on all Spaces", #207 `VTDecoderXPCService` memory pressure, #134 external
 display wallpaper stops, #175 cache limit exceeded. Nobody has this nailed.
+
+### 5.1 The second pass, and what it changed
+
+A wider sweep (GitHub search over `aerial wallpaper macos`, `dynamic wallpaper sunrise`,
+`wallpaper time of day switch`, `topic:macos-wallpaper`, plus Chinese-language coverage of this
+fork's own launch) turned up work that post-dates or outruns parts of our roadmap. Stated plainly,
+because it is the uncomfortable answer:
+
+- **The feature is not rare.** Four independent projects already switch Apple's aerials by time of
+  day the same way we do ([tahoe-motion-wallpaper](https://github.com/victor-gurbani/tahoe-motion-wallpaper),
+  [EMarionih](https://github.com/EMarionih/wallpaper-switcher), [postrou](https://github.com/postrou/MacOS_Dynamic_Aerial),
+  and, with sun events, [Sunpaper](https://github.com/mduncs/sunpaper-app)). Our mechanism earns no
+  originality points; what is still ours is the conservative per-scope write plus the step-aside and
+  snapshot behaviour.
+- **Both roadmap features exist elsewhere, further along.** Sun-relative scheduling and precise
+  wall-clock triggers are shipped by HourGlow (Apache-2.0) and Sunpaper (MIT), including the
+  no-location fallback we would have had to invent. #2 and #5 are "adopt", not "design".
+- **#1's hard half is solved on paper.** The encoder that produces the temporal sub-layers a custom
+  clip needs exists, with the root cause named and a verifier. What is still missing is someone
+  packaging it as a step inside a scheduler's flow.
+- **#6's recovery path exists as a 1-binary precedent**, and PaperSaver already measured the failure
+  and handles it. Our contribution there would be a number for this machine, not a new mechanism.
+- **The 80 GB question is answered** by Aerialist's keep-last-N and just-in-time download, and by
+  HourGlow/Sunpaper prefetching. §9.6 should read "adopt", not "consider".
+- **What nobody offers** is this fork's specific shape: ~2 MB, no renderer, no window, no
+  always-on playback, a schedule you set once and forget, and a store write only at a phase
+  boundary. The bigger tools buy power with a resident process; that trade is the one we should
+  keep refusing.
 
 ## 6. Menu bar, scheduling and login-item conventions
 
@@ -340,6 +390,13 @@ already warns "future macOS updates may break it".
    `register()` and on window appear rather than once at init, and schedule exact wall-clock ticks
    from `nextChange(after:)` instead of relying only on the coarse poll.
 
+A second, wider sweep (see §5.1) revised the confidence of items 2, 5 and 6: the sun maths, the
+trigger model, the per-slot still-image picker, the just-in-time download policy, and the
+temporal-layer encoder all already exist in MIT- or Apache-2.0-licensed projects that can be read
+and cited. What remains genuinely ours is the conservative write path and the restraint — the
+things those projects add are exactly the resident-process complexity this fork has no reason to
+take on.
+
 ## 10. Only an experiment can answer
 
 1. Does a custom asset id in an overridden manifest render **on the desktop** (not merely in System
@@ -347,9 +404,11 @@ already warns "future macOS updates may break it".
    test: copy `entries.json`, duplicate one Golden Gate asset with a new UUID pointing at a **hard
    link** of the 460 MB clip already on disk (zero extra bytes), set the two `AerialManifest*` keys,
    restart the agent, then delete the keys to revert.
-2. Does the scheduled catalogue refresh (`scheduledUpdateDate`, here tomorrow 05:42) clobber
-   overridden assets, and does `AerialManifestForceLocal` prevent it? AerialSwap says yes/no
-   respectively, which is why it runs a watcher.
+2. When the catalogue refresh fires (`scheduledUpdateDate`, here tomorrow 05:42), what actually
+   happens to an injected or overridden asset: is it deleted, ignored because the builtin manifest's
+   `version` is higher, or left alone while `AerialManifestForceLocal` also stops the list from
+   refreshing at all? BiAksoy documents the last one; AerialSwap behaves as if the first is likely.
+   Nobody I found states the answer, and it decides whether injection is a feature or a treadmill.
 3. Can a slot change be made visible without `killall WallpaperAgent` — is restarting only
    `WallpaperAerialsExtension` enough — and what is the *local* rate of "agent restarted but the
    provider didn't come back" on 27.2, against PaperSaver's ~1 in 3?
@@ -358,18 +417,25 @@ already warns "future macOS updates may break it".
 
 ## 11. Where each finding landed
 
-The findings above are tracked as issues on this fork, so the notes and the plan stay together:
+The findings above are tracked as issues on this fork, so the notes and the plan stay together.
+The right-hand column is the honest part: what already exists elsewhere, from the second pass (§5.1).
 
-| Issue | From |
-|---|---|
-| [#1 Per-slot content: photo, dynamic HEIC, or colour](https://github.com/next-miracle-creator/aerial-switcher/issues/1) | §3(a), §9.1–2 |
-| [#2 Sunrise/sunset scheduling](https://github.com/next-miracle-creator/aerial-switcher/issues/2) | §9.5 |
-| [#3 "Show menu bar icon" toggle](https://github.com/next-miracle-creator/aerial-switcher/issues/3) | §6 |
-| [#4 Read `SMAppService.status` after `register()`](https://github.com/next-miracle-creator/aerial-switcher/issues/4) | §6, §9.7 |
-| [#5 Exact wall-clock ticks from `nextChange(after:)`](https://github.com/next-miracle-creator/aerial-switcher/issues/5) | §6, §9.7 |
-| [#6 Reload reliability, and reading PaperSaver first](https://github.com/next-miracle-creator/aerial-switcher/issues/6) | §4, §5, §9.3, §10.3 |
-| [#7 Store-schema drift preflight + tested-on range](https://github.com/next-miracle-creator/aerial-switcher/issues/7) | §1, §9.2 |
+| Issue | From | Prior art, and what that means here |
+|---|---|---|
+| [#1 Per-slot content: photo, dynamic HEIC, or colour](https://github.com/next-miracle-creator/aerial-switcher/issues/1) | §3(a), §9.1–2 | Sunpaper already schedules aerials *and* user stills from one picker; BiAksoy exports a sun-following HEIC that needs no app at all; [AlexisBCD's encoder](https://github.com/AlexisBCD/macos-custom-video-wallpaper-fix) removes the video blocker's mystery. Design, don't invent |
+| [#2 Sunrise/sunset scheduling](https://github.com/next-miracle-creator/aerial-switcher/issues/2) | §9.5 | Shown twice — HourGlow (Apache-2.0, NOAA + time-zone fallback) and Sunpaper (MIT, sun events with a draggable track). Borrow the maths, keep our slot model |
+| [#3 "Show menu bar icon" toggle](https://github.com/next-miracle-creator/aerial-switcher/issues/3) | §6 | Not solved in this niche — none of the surveyed schedulers exposes an icon toggle, and the reference binding is `isInserted: .constant(...)` in [ControlRoom](https://github.com/twostraws/ControlRoom). Ours to build |
+| [#4 Read `SMAppService.status` after `register()`](https://github.com/next-miracle-creator/aerial-switcher/issues/4) | §6, §9.7 | HourGlow registers a login item the same way; nobody publishes a status-reading rule, so this stays a genuine small fix |
+| [#5 Exact wall-clock ticks from `nextChange(after:)`](https://github.com/next-miracle-creator/aerial-switcher/issues/5) | §6, §9.7 | HourGlow describes precisely this design ("no wallpaper polling", four notification classes) — evidence the shape works, still ours to implement |
+| [#6 Reload reliability, and reading PaperSaver first](https://github.com/next-miracle-creator/aerial-switcher/issues/6) | §4, §5, §9.3, §10.3 | [PaperSaver](https://github.com/AerialScreensaver/PaperSaver) measured the ~1-in-3 and handles it; [wallpaper-aerials-fix](https://github.com/yuvrajangadsingh/wallpaper-aerials-fix) recovers the provider on unlock; Sunpaper cross-fades over the grey flash instead of denying it. Three separate partial answers, none inside a scheduler |
+| [#7 Store-schema drift preflight + tested-on range](https://github.com/next-miracle-creator/aerial-switcher/issues/7) | §1, §9.2 | Nobody surveyed states a tested-major policy, and most assume the schema. AerialSwap's watcher is the closest thing to a drift defence |
 
 The open experiments in §10 are not issues — they are the cheapest way to turn a **[doc]**
 claim into a **[verified here]** one, and #1 and #6 depend on their answers. Nothing here is
 scheduled: the fork ships no roadmap, and a decision to build any of it is still ahead.
+
+One consequence worth stating out loud. Since §5.1 found projects that already ship #1's and #2's
+functionality — some with a bigger user base than this fork's 46 upstream stars — the reason to
+build here is not to be first. It is to keep the small conservative core (2 MB, no resident
+renderer, per-scope writes, step aside for the user's own pick, back up before touching anything)
+and take the sun maths and the trigger model from people who have already debugged them.
