@@ -112,6 +112,10 @@ private struct AerialsPane: View {
                             ProgressView(value: (Double(download.index) + download.fraction) / Double(download.count))
                                 .frame(width: 200)
                             Caption(downloadTitle(download))
+                        } else if let plan = model.downloadPlan, !plan.isEmpty {
+                            Button(model.downloadOffered ? tr("Download missing videos") : tr("Retry Download")) { model.startDownload() }
+                                .disabled(!plan.fitsOnDisk)
+                            Caption(downloadOffer(plan))
                         } else {
                             Caption(tr("One place, filmed at different times of day."))
                         }
@@ -136,10 +140,38 @@ private struct AerialsPane: View {
                 }
             }
 
+            Form {
+                LabeledContent(tr("Downloads")) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(tr("Download missing videos without asking"), isOn: Binding(
+                            get: { model.config.autoDownload },
+                            set: { model.setAutoDownload($0) }
+                        ))
+                        Caption(tr("Each video is a few hundred megabytes. Left off, the app tells you the size and waits."))
+                    }
+                }
+            }
+            .formStyle(.columns)
+
+            if model.stoodAside {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(tr("Your own wallpaper is showing")).font(.headline)
+                    Caption(tr("Switching stopped itself rather than overwrite it. Turn Switch Wallpaper back on to take over from here."))
+                }
+            }
+
             if let error = model.error {
                 Text(tr(error)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private func downloadOffer(_ plan: DownloadPlan) -> String {
+        let size = plan.sizesKnown ? AppModel.showing(plan.totalBytes) : tr("an unknown size")
+        var parts = [tr("%1$@ video(s) missing", "\(plan.aerials.count)"), tr("%1$@ to download", size)]
+        if let free = plan.freeBytes { parts.append(tr("%1$@ free", AppModel.showing(free))) }
+        if !plan.fitsOnDisk { parts.append(tr("not enough space")) }
+        return parts.joined(separator: " · ")
     }
 
     private func downloadTitle(_ download: AppModel.Download) -> String {
@@ -176,6 +208,14 @@ private struct GeneralPane: View {
             }
         }
         .formStyle(.columns)
+        // Errors raised from here — Launch at Login, restoring the wallpaper — belong to the
+        // control that caused them, and this tab showed none of them.
+        if let error = model.error {
+            Text(tr(error))
+                .font(.caption)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

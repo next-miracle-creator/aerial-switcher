@@ -138,6 +138,112 @@ import Testing
         let paths = Paths(home: URL(fileURLWithPath: "/nonexistent"))
         #expect(throws: AerialError.self) { try WallpaperStore(paths: paths).state() }
     }
+
+    // MARK: - Restoring without undoing everything else
+
+    /// The screen saver is the user's own business: putting the desktop back must not take
+    /// away an Aerial they chose for it in the meantime.
+    @Test func restoreKeepsAScreenSaverChosenSinceTakeover() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        let store = WallpaperStore(paths: paths)
+        try store.setAerial("A")
+        // System Settings splits Linked into Desktop and Idle; the user gives Idle their own Aerial.
+        try Fixtures.write(Fixtures.store(desktop: Fixtures.aerial("A"), screenSaver: Fixtures.aerial("OTHER")), to: paths)
+        #expect(try store.restoreBackup())
+        let saved = try #require(NSDictionary(contentsOf: paths.store))
+        let desktop = try #require(saved.value(forKeyPath: "AllSpacesAndDisplays.Desktop.Content.Choices") as? [NSDictionary])
+        let idle = try #require(saved.value(forKeyPath: "AllSpacesAndDisplays.Idle.Content.Choices") as? [NSDictionary])
+        #expect(desktop[0]["Provider"] as? String == "com.apple.wallpaper.choice.image")
+        #expect(WallpaperStore.assetID(of: idle[0]) == "OTHER")
+        #expect(try store.state() == .other)
+    }
+
+    /// A display added after the takeover is newer than the backup, and copying the whole
+    /// file back would erase it along with whatever it shows.
+    @Test func restoreKeepsADisplayAddedSinceTakeover() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        let store = WallpaperStore(paths: paths)
+        try store.setAerial("A")
+        // macOS gives a display plugged in later the Aerial that is showing; the app's last
+        // change is still what is on screen, so a restore is owed — but only for the desktop.
+        var after = Fixtures.store(desktop: Fixtures.aerial("A"))
+        after["Displays"] = ["D2": Fixtures.scope(desktop: Fixtures.aerial("A"))]
+        try Fixtures.write(after, to: paths)
+        #expect(try store.restoreBackup())
+        let saved = try #require(NSDictionary(contentsOf: paths.store))
+        let added = try #require(saved.value(forKeyPath: "Displays.D2.Desktop.Content.Choices") as? [NSDictionary])
+        #expect(WallpaperStore.assetID(of: added[0]) == "A")
+        let back = try #require(saved.value(forKeyPath: "AllSpacesAndDisplays.Desktop.Content.Choices") as? [NSDictionary])
+        #expect(back[0]["Provider"] as? String == "com.apple.wallpaper.choice.image")
+    }
+
+    /// The file being rewritten is Apple's, so a dated copy of it is kept beforehand.
+    @Test func snapshotsTheStoreBeforeChangingIt() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        let store = WallpaperStore(paths: paths)
+        try store.setAerial("A")
+        let names = try FileManager.default.contentsOfDirectory(atPath: paths.storeSnapshots.path).sorted()
+        #expect(names.count == 1)
+        let copy = try #require(NSDictionary(contentsOf: paths.storeSnapshots.appendingPathComponent(names[0])))
+        let choice = try #require((copy.value(forKeyPath: "AllSpacesAndDisplays.Linked.Content.Choices") as? [NSDictionary])?.first)
+        #expect(choice["Provider"] as? String == "com.apple.wallpaper.choice.image")
+    }
+
+    /// Two changes in the same second — off and straight back on — must not lose the copy the
+    /// first one kept, so a taken name gets a number on the end.
+    @Test func keepsBothSnapshotsTakenInTheSameSecond() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        let store = WallpaperStore(paths: paths)
+        try FileManager.default.createDirectory(at: paths.storeSnapshots, withIntermediateDirectories: true)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss"
+        let taken = paths.storeSnapshots.appendingPathComponent("Index-\(formatter.string(from: Date())).plist")
+        try Data("earlier".utf8).write(to: taken)
+        try store.setAerial("A")
+        let names = try FileManager.default.contentsOfDirectory(atPath: paths.storeSnapshots.path)
+        #expect(names.count == 2)
+        #expect(String(decoding: try Data(contentsOf: taken), as: UTF8.self) == "earlier")
+    }
+
+    /// Snapshots are a safety net, not an archive that grows forever.
+    @Test func keepsOnlyTheNewestSnapshots() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        let store = WallpaperStore(paths: paths)
+        try FileManager.default.createDirectory(at: paths.storeSnapshots, withIntermediateDirectories: true)
+        for index in 0..<12 {
+            try Data("x".utf8).write(to: paths.storeSnapshots.appendingPathComponent(String(format: "Index-20260101T0000%02d.plist", index)))
+        }
+        try store.setAerial("A")
+        let names = try FileManager.default.contentsOfDirectory(atPath: paths.storeSnapshots.path)
+        #expect(names.count == WallpaperStore.snapshotLimit)
+        #expect(names.contains("Index-20260101T000011.plist"))
+        #expect(!names.contains("Index-20260101T000000.plist"))
+    }
+
+    // MARK: - Screen savers
+
+    /// An Aerial the user chose for the screen saver is theirs to keep: the schedule follows
+    /// only the ones it set itself.
+    @Test func leavesAForeignAerialScreenSaverAlone() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(desktop: Fixtures.imageChoice, screenSaver: Fixtures.aerial("OTHER")))
+        let store = WallpaperStore(paths: paths)
+        try store.setAerial("A")
+        let saved = try #require(NSDictionary(contentsOf: paths.store))
+        let idle = try #require(saved.value(forKeyPath: "AllSpacesAndDisplays.Idle.Content.Choices") as? [NSDictionary])
+        #expect(WallpaperStore.assetID(of: idle[0]) == "OTHER")
+        #expect(try store.state() == .aerial(assetID: "A"))
+    }
+
+    /// An Aerial screen saver that has been following the app keeps following it.
+    @Test func keepsItsOwnAerialScreenSaverInStep() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(desktop: Fixtures.aerial("A"), screenSaver: Fixtures.aerial("A")))
+        try Fixtures.mark(lastSet: "A", on: paths)
+        let store = WallpaperStore(paths: paths)
+        try store.setAerial("B")
+        let saved = try #require(NSDictionary(contentsOf: paths.store))
+        let idle = try #require(saved.value(forKeyPath: "AllSpacesAndDisplays.Idle.Content.Choices") as? [NSDictionary])
+        #expect(WallpaperStore.assetID(of: idle[0]) == "B")
+    }
 }
 
 @Suite struct SwitcherTests {
@@ -225,6 +331,74 @@ import Testing
         config.schedules["tahoe"] = Schedule([.morning: TimeOfDay(hour: 6), .night: TimeOfDay(hour: 12, minute: 30)])
         #expect(try switcher(paths).sync(set: set, config: config, at: Fixtures.date(13), calendar: Fixtures.calendar) == .switched(to: set.aerial(for: .night)!))
     }
+
+    /// A wallpaper the user picked themselves outranks the schedule: nothing is written, and
+    /// the reason comes back for the menu to show.
+    @Test func stepsAsideForAWallpaperTheUserPicked() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        try Fixtures.download(["TA-DAY", "TA-EVENING"], into: paths)
+        let switcher = switcher(paths)
+        #expect(try switcher.sync(set: set, config: config, at: Fixtures.date(13), calendar: Fixtures.calendar) == .switched(to: set.aerial(for: .day)!))
+        // The user picks a picture in System Settings; the next phase must not overwrite it.
+        try Fixtures.write(Fixtures.store(Fixtures.imageChoice), to: paths)
+        #expect(try switcher.sync(set: set, config: config, at: Fixtures.date(19), calendar: Fixtures.calendar) == .steppedAside(set.aerial(for: .evening)!))
+        #expect(try WallpaperStore(paths: paths).state() == .other)
+    }
+
+    /// Taking over is what it always was: the first change asks no leave of the store.
+    @Test func takesOverWhenItHasNeverTouchedTheStore() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        try Fixtures.download(["TA-DAY"], into: paths)
+        let store = WallpaperStore(paths: paths)
+        #expect(!store.hasBackup)
+        #expect(try switcher(paths).sync(set: set, config: config, at: Fixtures.date(13), calendar: Fixtures.calendar) == .switched(to: set.aerial(for: .day)!))
+    }
+
+    /// While the app's own Aerial is what's showing, a later phase is simply the next switch.
+    @Test func keepsSwitchingItsOwnAerials() throws {
+        let paths = try Fixtures.paths(store: Fixtures.store(Fixtures.imageChoice))
+        try Fixtures.download(["TA-DAY", "TA-EVENING"], into: paths)
+        let switcher = switcher(paths)
+        try switcher.sync(set: set, config: config, at: Fixtures.date(13), calendar: Fixtures.calendar)
+        #expect(try switcher.sync(set: set, config: config, at: Fixtures.date(19), calendar: Fixtures.calendar) == .switched(to: set.aerial(for: .evening)!))
+    }
+}
+
+@Suite struct DownloadPlanTests {
+    private func plan(total: Int64, free: Int64?) -> DownloadPlan {
+        DownloadPlan(aerials: Fixtures.tahoe.aerials.filter { $0.id == "TA-DAY" },
+                     totalBytes: total, freeBytes: free, sizesKnown: true)
+    }
+
+    @Test(arguments: [
+        // Fits, doesn't, and only fits once the room to spare is counted as well.
+        (Int64(1_000_000_000), Int64(103_000_000_000), true),
+        (Int64(200_000_000_000), Int64(103_000_000_000), false),
+        (DownloadPlan.headroom, DownloadPlan.headroom, false),
+        (DownloadPlan.headroom, DownloadPlan.headroom * 2, true),
+    ])
+    func leavesRoomForTheRestOfTheMachine(total: Int64, free: Int64, fits: Bool) {
+        #expect(plan(total: total, free: free).fitsOnDisk == fits)
+    }
+
+    /// A volume that won't answer is no reason to refuse a download the user asked for.
+    @Test func unknownSpaceAloneDoesNotBlock() {
+        #expect(plan(total: 500_000_000_000, free: nil).fitsOnDisk)
+    }
+
+    @Test func nothingMissingIsAnEmptyPlan() {
+        let empty = DownloadPlan(aerials: [], totalBytes: 0, freeBytes: 1, sizesKnown: false)
+        #expect(empty.isEmpty)
+        #expect(!empty.sizesKnown)
+    }
+
+    /// The videos folder usually isn't there before the first download, so the free space
+    /// comes from the closest part of the path that is.
+    @Test func readsFreeSpaceUpThePath() throws {
+        let missing = URL(fileURLWithPath: "/tmp/aerial-switcher-absent/videos")
+        let free = try #require(VideoLibrary.freeBytes(near: missing))
+        #expect(free > 0)
+    }
 }
 
 @Suite struct ConfigTests {
@@ -244,5 +418,17 @@ import Testing
 
     @Test func missingFileGivesDefaults() {
         #expect(Config.load(from: URL(fileURLWithPath: "/nonexistent.json")) == Config())
+    }
+
+    /// Gigabytes are never downloaded on the app's own say-so, and a config from before the
+    /// offer keeps asking. The reason it stood aside outlives a relaunch, and stays readable.
+    @Test func downloadsAreAskedForUnlessSaidOtherwise() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).json")
+        #expect(!Config().autoDownload)
+        #expect(!Config.load(from: url).autoDownload)
+        let config = Config(setID: "tahoe", autoDownload: true, steppedAsideAt: Fixtures.date(7, 30))
+        try config.save(to: url)
+        #expect(Config.load(from: url) == config)
+        #expect(try String(contentsOf: url, encoding: .utf8).contains("2026-11-01T23:30:00Z"))
     }
 }

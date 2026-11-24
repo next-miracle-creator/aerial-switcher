@@ -6,6 +6,17 @@ struct MenuContent: View {
 
     var body: some View {
         ForEach(statusLines, id: \.self) { Text($0) }
+        if let plan = model.downloadPlan, !plan.isEmpty {
+            Divider()
+            Text(downloadLine(plan))
+            if plan.fitsOnDisk {
+                Button(model.downloadOffered ? tr("Download") : tr("Retry Download")) { model.startDownload() }
+                    .disabled(model.download != nil)
+            } else {
+                // Nothing to gain by starting it: the menu says so instead of offering.
+                Text(tr("Not enough free space to download."))
+            }
+        }
         Divider()
         Toggle(tr("Switch Wallpaper"), isOn: Binding(get: { model.config.enabled }, set: { model.setEnabled($0) }))
             .disabled(model.selectedSet == nil)
@@ -37,7 +48,7 @@ struct MenuContent: View {
         } else if let download = model.download {
             lines.append(tr("Downloading %1$@ of %2$@ · %3$@%%", "\(download.index + 1)", "\(download.count)", "\(Int(download.fraction * 100))"))
         } else if !model.config.enabled {
-            lines.append(tr("Off · original wallpaper"))
+            lines.append(model.stoodAside ? tr("Stopped · showing your wallpaper") : tr("Off · original wallpaper"))
         } else if model.config.paused {
             lines.append(tr("Paused"))
         } else if let next = model.nextChange {
@@ -45,5 +56,10 @@ struct MenuContent: View {
             lines.append(tr("%1$@ at %2$@", next.phase.name, time))
         }
         return lines
+    }
+
+    private func downloadLine(_ plan: DownloadPlan) -> String {
+        let size = plan.sizesKnown ? AppModel.showing(plan.totalBytes) : tr("size unknown")
+        return tr("Missing %1$@ video(s) · %2$@", "\(plan.aerials.count)", size)
     }
 }

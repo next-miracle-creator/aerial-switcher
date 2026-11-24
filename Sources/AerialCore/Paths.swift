@@ -33,6 +33,9 @@ public struct Paths: Sendable {
     public var lastSet: URL { appSupport.appendingPathComponent("LastSet.txt") }
     /// Videos being downloaded, moved into `videos` once complete.
     public var partialDownloads: URL { appSupport.appendingPathComponent("Downloads") }
+    /// Dated copies of the store taken before each change, newest last by name. A belt and
+    /// braces alongside `storeBackup`: the file we rewrite is Apple's, so keep the way back.
+    public var storeSnapshots: URL { appSupport.appendingPathComponent("StoreSnapshots") }
 }
 
 public struct AerialError: LocalizedError, Equatable {

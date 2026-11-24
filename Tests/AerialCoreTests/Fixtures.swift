@@ -51,6 +51,35 @@ enum Fixtures {
         return ["AllSpacesAndDisplays": scope, "SystemDefault": scope, "Displays": [String: Any](), "Spaces": [String: Any]()]
     }
 
+    /// An Aerial choice for one asset.
+    static func aerial(_ id: String) -> [String: Any] {
+        choice(provider: "com.apple.wallpaper.choice.aerials", config: ["assetID": id])
+    }
+
+    /// A scope as System Settings leaves it once the screen saver is set apart from the
+    /// desktop: `Desktop` and `Idle` of their own, no `Linked`.
+    static func scope(desktop: [String: Any], screenSaver: [String: Any]? = nil) -> [String: Any] {
+        var scope: [String: Any] = [
+            "Desktop": ["Content": ["Choices": [desktop], "Shuffle": "$null"], "LastSet": Date(timeIntervalSince1970: 0)],
+        ]
+        if let screenSaver {
+            scope["Idle"] = ["Content": ["Choices": [screenSaver], "Shuffle": "$null"], "LastSet": Date(timeIntervalSince1970: 0)]
+        }
+        scope["Type"] = "individual"
+        return scope
+    }
+
+    static func store(desktop: [String: Any], screenSaver: [String: Any]? = nil) -> [String: Any] {
+        let scope = scope(desktop: desktop, screenSaver: screenSaver)
+        return ["AllSpacesAndDisplays": scope, "SystemDefault": scope, "Displays": [String: Any](), "Spaces": [String: Any]()]
+    }
+
+    /// Says the wallpaper showing is the one this app set, as it is after a takeover.
+    static func mark(lastSet assetID: String, on paths: Paths) throws {
+        try FileManager.default.createDirectory(at: paths.appSupport, withIntermediateDirectories: true)
+        try Data(assetID.utf8).write(to: paths.lastSet, options: .atomic)
+    }
+
     /// A throwaway home folder with a wallpaper store in it.
     static func paths(store: [String: Any]) throws -> Paths {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

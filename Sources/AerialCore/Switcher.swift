@@ -9,6 +9,10 @@ public enum SyncResult: Equatable, Sendable {
     /// The Aerial for the current phase isn't on disk yet; switching now would show the
     /// macOS default wallpaper instead.
     case notDownloaded(Aerial)
+    /// The wallpaper showing is one the user picked, not one this app set. Switching would
+    /// overwrite their choice, so the schedule waits: turn switching off and on again, or
+    /// pick a set, to take over from here.
+    case steppedAside(Aerial)
 }
 
 /// Puts the wallpaper in line with the schedule. Safe to call any time — on a timer,
@@ -18,7 +22,7 @@ public struct Switcher: Sendable {
     public let videos: VideoLibrary
     let reload: @Sendable () -> Void
 
-    public init(paths: Paths = .live, reload: @escaping @Sendable () -> Void = WallpaperStore.reloadAgent) {
+    public init(paths: Paths = .live, reload: @Sendable @escaping () -> Void = { _ = WallpaperStore.reloadAgent() }) {
         store = WallpaperStore(paths: paths)
         videos = VideoLibrary(paths: paths)
         self.reload = reload
@@ -34,6 +38,9 @@ public struct Switcher: Sendable {
         guard let set, let target = aerial(for: set, config: config, at: date, calendar: calendar) else { return .noSetChosen }
         guard videos.isDownloaded(target) else { return .notDownloaded(target) }
         if try store.state() == .aerial(assetID: target.id) { return .alreadyShowing(target) }
+        // Having taken over once, the app only owns the wallpaper while it still shows what
+        // it set. Something else on screen is the user speaking; the schedule listens.
+        if store.hasBackup, !store.isShowingOwnChange { return .steppedAside(target) }
         try store.setAerial(target.id, now: date)
         reload()
         return .switched(to: target)
