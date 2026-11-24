@@ -11,6 +11,15 @@
 
 ---
 
+> **This is a personal fork** of [YnNJU/aerial-switcher](https://github.com/YnNJU/aerial-switcher),
+> based on upstream `1.0.3` (`0885d32`). Everything below is upstream's README. What this fork
+> changes, and why, is in [FORK.md](FORK.md): downloads ask first (with sizes and free space), a
+> wallpaper you picked by hand outranks the schedule, restoring rewrites only the desktop entries,
+> and the wallpaper store gets a dated snapshot before every change. The branch I run is `local`;
+> the build is versioned `1.0.3-fork.2`.
+
+---
+
 Some of the Landscape aerial wallpapers included with macOS come in sets showing the same location at different times of day. Tahoe, Sequoia, and Golden Gate are examples, but macOS doesn't automatically switch between them.
 
 Aerial Switcher is a menu bar app that switches between these wallpapers at scheduled times.

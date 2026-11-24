@@ -13,7 +13,7 @@ swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/us
 Build and bundle (universal, ad-hoc signed, into `dist/`):
 
 ```bash
-VERSION=1.0.3-fork.1 ./scripts/bundle.sh
+VERSION=1.0.3-fork.2 ./scripts/bundle.sh
 ```
 
 ## What changed

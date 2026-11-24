@@ -11,6 +11,14 @@
 
 ---
 
+> **这是个人 fork**，上游是 [YnNJU/aerial-switcher](https://github.com/YnNJU/aerial-switcher)，
+> 基于上游 `1.0.3`（`0885d32`）。下面仍是上游的说明。这个 fork 改了什么、为什么改，写在
+> [FORK.md](FORK.md)（英文）里：下载前先报体积和剩余空间并等确认；你自己手动选的壁纸优先级高于
+> 排程；恢复时只改写桌面条目，不覆盖整个配置；每次改动前给壁纸配置留一份带日期的快照。
+> 我实际运行的分支是 `local`，构建版本为 `1.0.3-fork.2`。
+
+---
+
 macOS 自带的 Landscape 航拍壁纸，有些是同一地点不同时段的成套壁纸。例如 Tahoe、Sequoia 和 Golden Gate，都有不同时段的版本，但 macOS 不能自动切换它们。
 
 Aerial Switcher 是一个菜单栏 App，可以按照设定的时间自动切换这些壁纸。
